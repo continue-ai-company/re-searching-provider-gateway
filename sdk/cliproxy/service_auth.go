@@ -193,6 +193,9 @@ func (s *Service) ensureWebsocketGateway() {
 	if s == nil {
 		return
 	}
+	if s.restrictedRuntime {
+		return
+	}
 	if s.wsGateway != nil {
 		return
 	}
@@ -271,6 +274,10 @@ func (s *Service) applyCoreAuthAddOrUpdate(ctx context.Context, auth *coreauth.A
 
 func (s *Service) prepareCoreAuthForModelRegistration(ctx context.Context, auth *coreauth.Auth) *coreauth.Auth {
 	if s == nil || s.coreManager == nil || auth == nil || auth.ID == "" {
+		return nil
+	}
+	if !s.providerAllowed(auth.Provider) {
+		s.removeDisallowedAuth(ctx, auth.ID)
 		return nil
 	}
 	auth = auth.Clone()

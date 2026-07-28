@@ -174,7 +174,7 @@ func (s *Service) registerAvailableExecutors(ctx context.Context, opts executorR
 	if len(opts.auths) > 0 {
 		s.registerExecutorsForAuths(opts.auths, opts.forceReplaceAuths)
 	}
-	if opts.includePlugins && s.pluginHost != nil {
+	if opts.includePlugins && s.pluginHost != nil && !s.restrictedRuntime {
 		registerPluginExecutors(s.pluginHost, s.coreManager)
 	}
 }
@@ -221,6 +221,9 @@ func (s *Service) registerExecutorsForAuths(auths []*coreauth.Auth, forceReplace
 
 func (s *Service) registerExecutorForAuth(a *coreauth.Auth, forceReplace bool) {
 	if s == nil || s.coreManager == nil || a == nil {
+		return
+	}
+	if !s.providerAllowed(a.Provider) {
 		return
 	}
 	s.cfgMu.RLock()

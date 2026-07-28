@@ -49,7 +49,10 @@ func (s *Service) Run(ctx context.Context) error {
 		s.homeMu.Unlock()
 	}()
 
-	usage.StartDefault(ctx)
+	if !s.restrictedRuntime {
+		usage.StartDefault(ctx)
+		s.usageStarted = true
+	}
 	homeEnabled := s.cfg != nil && s.cfg.Home.Enabled
 	if homeEnabled {
 		forceHomeRuntimeConfig(s.cfg)
@@ -78,6 +81,7 @@ func (s *Service) Run(ctx context.Context) error {
 		if errLoad := s.coreManager.Load(ctx); errLoad != nil {
 			log.Warnf("failed to load auth store: %v", errLoad)
 		}
+		s.pruneDisallowedAuths(ctx)
 		s.registerConfigAPIKeyAuths(coreauth.WithSkipPersist(ctx), s.cfg)
 		if s.cfg.SaveCooldownStatus {
 			if errRestoreCooldown := s.coreManager.RestoreCooldownStates(ctx); errRestoreCooldown != nil {
@@ -166,7 +170,9 @@ func (s *Service) Run(ctx context.Context) error {
 	time.Sleep(100 * time.Millisecond)
 	fmt.Printf("API server started successfully on: %s:%d\n", s.cfg.Host, s.cfg.Port)
 
-	s.applyPprofConfig(s.cfg)
+	if !s.restrictedRuntime {
+		s.applyPprofConfig(s.cfg)
+	}
 
 	if s.hooks.OnAfterStart != nil {
 		s.hooks.OnAfterStart(s)
@@ -200,7 +206,7 @@ func (s *Service) Run(ctx context.Context) error {
 	s.registerModelRefreshCallback()
 
 	// Prefer core auth manager auto refresh if available.
-	if s.coreManager != nil && !homeEnabled {
+	if s.coreManager != nil && !homeEnabled && !s.restrictedRuntime {
 		interval := 15 * time.Minute
 		s.coreManager.StartAutoRefresh(context.Background(), interval)
 		log.Infof("core auth auto-refresh started (interval=%s)", interval)
@@ -345,7 +351,10 @@ func (s *Service) Shutdown(ctx context.Context) error {
 			}
 		}
 
-		usage.StopDefault()
+		if s.usageStarted {
+			usage.StopDefault()
+			s.usageStarted = false
+		}
 	})
 	return shutdownErr
 }

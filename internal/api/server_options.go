@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"net"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -27,6 +29,9 @@ type serverOptionConfig struct {
 	pluginHost            *pluginhost.Host
 	configReloadHook      func(context.Context, *config.Config)
 	exampleAPIKeySafeMode bool
+	routeAllowlistEnabled bool
+	routeAllowlist        map[string]struct{}
+	listeningHook         func(net.Addr) error
 }
 
 // ServerOption customises HTTP server construction.
@@ -131,5 +136,38 @@ func WithConfigReloadHook(hook func(context.Context, *config.Config)) ServerOpti
 func WithExampleAPIKeySafeMode() ServerOption {
 	return func(cfg *serverOptionConfig) {
 		cfg.exampleAPIKeySafeMode = true
+	}
+}
+
+// Route identifies one exact HTTP method and path pair.
+type Route struct {
+	Method string
+	Path   string
+}
+
+// WithRouteAllowlist rejects every route that is not explicitly listed.
+//
+// This option is intentionally opt-in so the default CLIProxyAPI server keeps
+// its existing route surface.
+func WithRouteAllowlist(routes ...Route) ServerOption {
+	return func(cfg *serverOptionConfig) {
+		cfg.routeAllowlistEnabled = true
+		cfg.routeAllowlist = make(map[string]struct{}, len(routes))
+		for _, route := range routes {
+			method := strings.ToUpper(strings.TrimSpace(route.Method))
+			path := strings.TrimSpace(route.Path)
+			if method == "" || path == "" || !strings.HasPrefix(path, "/") {
+				continue
+			}
+			cfg.routeAllowlist[method+" "+path] = struct{}{}
+		}
+	}
+}
+
+// WithListeningHook registers a callback invoked after the TCP listener has
+// bound successfully but before requests are served.
+func WithListeningHook(hook func(net.Addr) error) ServerOption {
+	return func(cfg *serverOptionConfig) {
+		cfg.listeningHook = hook
 	}
 }

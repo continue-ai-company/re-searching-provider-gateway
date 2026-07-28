@@ -1,13 +1,7 @@
 name: auto-retarget-main-pr-to-dev
 
 on:
-  pull_request_target:
-    types:
-      - opened
-      - reopened
-      - edited
-    branches:
-      - main
+  workflow_dispatch:
 
 permissions:
   contents: read

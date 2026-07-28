@@ -16,6 +16,12 @@ func (s *Service) applyConfigUpdate(newCfg *config.Config) {
 }
 
 func (s *Service) applyWatcherConfigUpdate(newCfg *config.Config) {
+	if s != nil && s.configPolicy != nil {
+		if errPolicy := s.configPolicy(newCfg); errPolicy != nil {
+			log.Warnf("ignored configuration update rejected by policy: %v", errPolicy)
+			return
+		}
+	}
 	s.applyConfigUpdateWithAuthSynthesis(context.Background(), newCfg, false)
 }
 
