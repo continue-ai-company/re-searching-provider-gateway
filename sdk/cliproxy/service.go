@@ -12,6 +12,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/home"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/homeplugins"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/pluginhost"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/watcher"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/wsrelay"
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v7/sdk/access"
@@ -58,6 +59,17 @@ type Service struct {
 
 	// serverOptions contains additional server configuration options.
 	serverOptions []api.ServerOption
+
+	// providerAllowlist is active only when providerAllowlistEnabled is true.
+	providerAllowlist        map[string]struct{}
+	providerAllowlistEnabled bool
+
+	// configPolicy is nil for the default unrestricted upstream behavior.
+	configPolicy func(*config.Config) error
+
+	// restrictedRuntime is opt-in and used by the Re-Searching sidecar command.
+	restrictedRuntime bool
+	usageStarted      bool
 
 	// server is the HTTP API server instance.
 	server *api.Server
@@ -108,6 +120,7 @@ type Service struct {
 	homeConfigCommitHook         func()
 	homeConfigRuntimeHook        func()
 	applyPprofConfigContextFn    func(context.Context, *config.Config) bool
+	modelRefreshRegistrar        func(registry.ModelRefreshCallback)
 	updateServerClientsContextFn func(context.Context, *config.Config) bool
 	homeSupervisor               *homeSubscriberSupervisor
 	homeMu                       sync.Mutex

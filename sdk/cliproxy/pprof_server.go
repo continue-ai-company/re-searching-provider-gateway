@@ -33,6 +33,9 @@ func (s *Service) applyPprofConfigContext(ctx context.Context, cfg *config.Confi
 	if s == nil || cfg == nil || (ctx != nil && ctx.Err() != nil) {
 		return false
 	}
+	if s.restrictedRuntime {
+		return true
+	}
 	if s.applyPprofConfigContextFn != nil {
 		return s.applyPprofConfigContextFn(ctx, cfg)
 	}

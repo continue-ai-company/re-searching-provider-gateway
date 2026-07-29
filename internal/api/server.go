@@ -103,6 +103,7 @@ type Server struct {
 
 	exampleAPIKeySafeModeEnabled bool
 	exampleAPIKeySafeModeActive  atomic.Bool
+	listeningHook                func(net.Addr) error
 }
 
 // NewServer creates and initializes a new API server instance.
@@ -131,6 +132,9 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 	engine := gin.New()
 	if optionState.engineConfigurator != nil {
 		optionState.engineConfigurator(engine)
+	}
+	if optionState.routeAllowlistEnabled {
+		engine.Use(exactRouteAllowlistMiddleware(optionState.routeAllowlist))
 	}
 
 	// Add middleware
@@ -182,6 +186,7 @@ func NewServer(cfg *config.Config, authManager *auth.Manager, accessManager *sdk
 		pluginHost:          optionState.pluginHost,
 
 		exampleAPIKeySafeModeEnabled: optionState.exampleAPIKeySafeMode,
+		listeningHook:                optionState.listeningHook,
 	}
 	s.wsAuthEnabled.Store(cfg.WebsocketAuth)
 	s.exampleAPIKeySafeModeActive.Store(s.exampleAPIKeySafeModeRequired(cfg))
@@ -302,6 +307,15 @@ func (s *Server) Start() error {
 		log.Debugf("Starting API server on %s", addr)
 	}
 
+	if optionStateHook := s.listeningHook; optionStateHook != nil {
+		if errHook := optionStateHook(listener.Addr()); errHook != nil {
+			if errClose := listener.Close(); errClose != nil && !errors.Is(errClose, net.ErrClosed) {
+				log.Debugf("failed to close listener after listening hook failure: %v", errClose)
+			}
+			return fmt.Errorf("failed to publish listening state: %w", errHook)
+		}
+	}
+
 	httpListener := newMuxListener(listener.Addr(), 1024)
 	s.muxBaseListener = listener
 	s.muxHTTPListener = httpListener
@@ -355,6 +369,25 @@ func (s *Server) Start() error {
 			return fmt.Errorf("failed to start HTTP server: %v", errServe)
 		}
 		return nil
+	}
+}
+
+func exactRouteAllowlistMiddleware(allowed map[string]struct{}) gin.HandlerFunc {
+	allowlist := make(map[string]struct{}, len(allowed))
+	for key := range allowed {
+		allowlist[key] = struct{}{}
+	}
+	return func(c *gin.Context) {
+		if c == nil || c.Request == nil || c.Request.URL == nil {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+		key := strings.ToUpper(c.Request.Method) + " " + c.Request.URL.Path
+		if _, ok := allowlist[key]; !ok {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+		c.Next()
 	}
 }
 

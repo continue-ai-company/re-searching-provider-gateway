@@ -91,6 +91,13 @@ func (s *Service) syncPluginRuntimeConfigForConfig(ctx context.Context, cfg *con
 		sdkAuth.RegisterPluginAuthParser(nil)
 		return false
 	}
+	if s.restrictedRuntime {
+		sdkAuth.RegisterPluginAuthParser(nil)
+		if s.coreManager != nil {
+			s.coreManager.SetPluginScheduler(nil)
+		}
+		return false
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -128,6 +135,9 @@ func (s *Service) syncPluginRuntimeConfigForConfig(ctx context.Context, cfg *con
 
 func (s *Service) syncPluginModelRuntime(ctx context.Context) {
 	if s == nil || s.pluginHost == nil || s.coreManager == nil {
+		return
+	}
+	if s.restrictedRuntime {
 		return
 	}
 	if ctx == nil {
@@ -305,11 +315,18 @@ func modelRegistrationMaxWorkersForCategory(category string) int {
 }
 
 func (s *Service) registerModelRefreshCallback() {
+	if s == nil || s.restrictedRuntime {
+		return
+	}
+	registrar := s.modelRefreshRegistrar
+	if registrar == nil {
+		registrar = registry.SetModelRefreshCallback
+	}
 	// Register callback for startup and periodic model catalog refresh.
 	// When remote model definitions change, re-register models for affected providers.
 	// This intentionally rebuilds per-auth model availability from the latest catalog
 	// snapshot instead of preserving prior registry suppression state.
-	registry.SetModelRefreshCallback(func(changedProviders []string) {
+	registrar(func(changedProviders []string) {
 		if s == nil || s.coreManager == nil || len(changedProviders) == 0 {
 			return
 		}

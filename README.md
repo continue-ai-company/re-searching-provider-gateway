@@ -2,6 +2,14 @@
 
 English | [中文](README_CN.md) | [日本語](README_JA.md)
 
+> **Re-Searching fork notice**
+>
+> This repository is the source and release surface for the private local
+> [Re-Searching Provider Gateway](RE_SEARCHING_GATEWAY.md). Re-Searching ships
+> only `cmd/re-searching-gateway`; it does not expose the general CLIProxyAPI
+> application, management UI, OAuth callbacks, plugins, or multi-provider
+> surface. The upstream source is retained to keep the patch set auditable.
+
 A proxy server that provides OpenAI/Gemini/Claude/Codex/Grok compatible API interfaces for CLI.
 
 You can access the following providers locally and with multiple CLI accounts through any OpenAI (including Responses), Gemini (including Interactions), or Claude-compatible client or SDK.

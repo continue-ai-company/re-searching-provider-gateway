@@ -59,6 +59,16 @@ type Builder struct {
 
 	// serverOptions contains additional server configuration options.
 	serverOptions []api.ServerOption
+
+	// providerAllowlist limits runtime credentials and executors when explicitly configured.
+	providerAllowlist        []string
+	providerAllowlistEnabled bool
+
+	// configPolicy validates and hardens initial and hot-reloaded configuration.
+	configPolicy func(*config.Config) error
+
+	// restrictedRuntime disables control-plane and unrelated background subsystems.
+	restrictedRuntime bool
 }
 
 // Hooks allows callers to plug into service lifecycle stages.
@@ -167,6 +177,31 @@ func (b *Builder) WithServerOptions(opts ...api.ServerOption) *Builder {
 	return b
 }
 
+// WithProviderAllowlist limits the service to the listed provider identifiers.
+//
+// The option is intentionally opt-in. Builders that do not call it retain the
+// full upstream provider behavior.
+func (b *Builder) WithProviderAllowlist(providers ...string) *Builder {
+	b.providerAllowlistEnabled = true
+	b.providerAllowlist = append([]string{}, providers...)
+	return b
+}
+
+// WithRestrictedRuntime disables usage dispatch, websocket ingress, plugins,
+// pprof, model refresh callbacks, and credential auto-refresh. It is opt-in so
+// the default upstream service behavior remains unchanged.
+func (b *Builder) WithRestrictedRuntime() *Builder {
+	b.restrictedRuntime = true
+	return b
+}
+
+// WithConfigPolicy installs an opt-in policy for the initial configuration and
+// every configuration loaded by the file watcher.
+func (b *Builder) WithConfigPolicy(policy func(*config.Config) error) *Builder {
+	b.configPolicy = policy
+	return b
+}
+
 // WithLocalManagementPassword configures a password that is only accepted from localhost management requests.
 func (b *Builder) WithLocalManagementPassword(password string) *Builder {
 	if password == "" {
@@ -193,6 +228,11 @@ func (b *Builder) Build() (*Service, error) {
 	}
 	if b.configPath == "" {
 		return nil, fmt.Errorf("cliproxy: configuration path is required")
+	}
+	if b.configPolicy != nil {
+		if errPolicy := b.configPolicy(b.cfg); errPolicy != nil {
+			return nil, fmt.Errorf("cliproxy: configuration rejected by policy: %w", errPolicy)
+		}
 	}
 	b.cfg.NormalizePluginsConfig()
 	if errResolvePluginsDir := b.cfg.ResolvePluginsDir(); errResolvePluginsDir != nil && b.cfg.Plugins.Enabled {
@@ -226,10 +266,10 @@ func (b *Builder) Build() (*Service, error) {
 
 	configaccess.Register(&b.cfg.SDKConfig)
 	pluginHost := b.pluginHost
-	if pluginHost == nil {
+	if pluginHost == nil && !b.restrictedRuntime {
 		pluginHost = pluginhost.New()
 	}
-	if b.cfg != nil {
+	if b.cfg != nil && pluginHost != nil {
 		pluginHost.ApplyConfig(context.Background(), b.cfg)
 		pluginHost.RegisterFrontendAuthProviders()
 	}
@@ -262,19 +302,23 @@ func (b *Builder) Build() (*Service, error) {
 	}
 
 	service := &Service{
-		cfg:                 b.cfg,
-		configPath:          b.configPath,
-		tokenProvider:       tokenProvider,
-		apiKeyProvider:      apiKeyProvider,
-		watcherFactory:      watcherFactory,
-		hooks:               b.hooks,
-		authManager:         authManager,
-		accessManager:       accessManager,
-		coreManager:         coreManager,
-		cooldownStateStore:  cooldownStateStore,
-		pluginHost:          pluginHost,
-		appliedRoutingState: appliedRoutingState,
-		serverOptions:       append([]api.ServerOption(nil), b.serverOptions...),
+		cfg:                      b.cfg,
+		configPath:               b.configPath,
+		tokenProvider:            tokenProvider,
+		apiKeyProvider:           apiKeyProvider,
+		watcherFactory:           watcherFactory,
+		hooks:                    b.hooks,
+		authManager:              authManager,
+		accessManager:            accessManager,
+		coreManager:              coreManager,
+		cooldownStateStore:       cooldownStateStore,
+		pluginHost:               pluginHost,
+		appliedRoutingState:      appliedRoutingState,
+		serverOptions:            append([]api.ServerOption(nil), b.serverOptions...),
+		providerAllowlist:        normalizeProviderAllowlist(b.providerAllowlist),
+		providerAllowlistEnabled: b.providerAllowlistEnabled,
+		configPolicy:             b.configPolicy,
+		restrictedRuntime:        b.restrictedRuntime,
 	}
 	if b.postAuthHook != nil {
 		service.serverOptions = append(service.serverOptions, api.WithPostAuthHook(b.postAuthHook))
