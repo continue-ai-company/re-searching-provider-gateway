@@ -53,11 +53,12 @@ timestamp. It never contains the bearer key or a credential path.
 per-provider `models` array is intentionally a strict subset of `/v1/models`:
 it contains only models available to the current account that expose at least
 one reasoning effort and have a matching positive priority in the provider
-catalog. Each entry has `id`, `priority`, and `reasoning_efforts`; entries are
-ordered by ascending priority and then model ID. A missing catalog match,
-non-positive priority, or empty reasoning-effort list is omitted rather than
-guessed. Re-Searching owns the `quality` and `speed` profile policy and selects
-from this fail-closed catalog.
+catalog. Each entry has `id`, `priority`, `reasoning_efforts`, the optional
+`default_service_tier`, and its validated `service_tiers`; entries are ordered
+by ascending priority and then model ID. A missing catalog match, non-positive
+priority, or empty reasoning-effort list is omitted rather than guessed.
+Re-Searching freezes an exact model, reasoning effort, and service tier from
+this fail-closed catalog.
 
 ## Provenance and releases
 

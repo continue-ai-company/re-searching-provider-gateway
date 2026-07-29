@@ -47,18 +47,32 @@ type providerCapabilities struct {
 }
 
 type modelCapabilities struct {
-	ID               string   `json:"id"`
-	Priority         int      `json:"priority"`
-	ReasoningEfforts []string `json:"reasoning_efforts"`
+	ID                 string                    `json:"id"`
+	Priority           int                       `json:"priority"`
+	ReasoningEfforts   []string                  `json:"reasoning_efforts"`
+	DefaultServiceTier *string                   `json:"default_service_tier"`
+	ServiceTiers       []serviceTierCapabilities `json:"service_tiers"`
 }
 
 type providerModelCapabilityResolver func([]*registry.ModelInfo) []modelCapabilities
 
 type codexClientModelPriorityCatalog struct {
 	Models []struct {
-		Slug     string `json:"slug"`
-		Priority int    `json:"priority"`
+		Slug               string  `json:"slug"`
+		Priority           int     `json:"priority"`
+		DefaultServiceTier *string `json:"default_service_tier"`
+		ServiceTiers       []struct {
+			ID          string `json:"id"`
+			Name        string `json:"name"`
+			Description string `json:"description"`
+		} `json:"service_tiers"`
 	} `json:"models"`
+}
+
+type serviceTierCapabilities struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 // MetadataHeadersMiddleware adds gateway provenance without changing the
@@ -160,22 +174,32 @@ func resolveCodexModelCapabilitiesFromCatalog(
 		return result
 	}
 
-	priorityBySlug := make(map[string]int, len(catalog.Models))
+	catalogBySlug := make(map[string]modelCapabilities, len(catalog.Models))
 	ambiguousSlugs := make(map[string]struct{})
 	for _, catalogModel := range catalog.Models {
 		slug := strings.TrimSpace(catalogModel.Slug)
 		if slug == "" || catalogModel.Priority <= 0 {
 			continue
 		}
-		if _, exists := priorityBySlug[slug]; exists {
-			delete(priorityBySlug, slug)
+		if _, exists := catalogBySlug[slug]; exists {
+			delete(catalogBySlug, slug)
 			ambiguousSlugs[slug] = struct{}{}
 			continue
 		}
 		if _, ambiguous := ambiguousSlugs[slug]; ambiguous {
 			continue
 		}
-		priorityBySlug[slug] = catalogModel.Priority
+		serviceTiers := normalizeServiceTiers(catalogModel.ServiceTiers)
+		defaultServiceTier := normalizeOptionalServiceTier(
+			catalogModel.DefaultServiceTier,
+			serviceTiers,
+		)
+		catalogBySlug[slug] = modelCapabilities{
+			ID:                 slug,
+			Priority:           catalogModel.Priority,
+			DefaultServiceTier: defaultServiceTier,
+			ServiceTiers:       serviceTiers,
+		}
 	}
 
 	for _, model := range models {
@@ -183,8 +207,8 @@ func resolveCodexModelCapabilitiesFromCatalog(
 			continue
 		}
 		modelID := strings.TrimSpace(model.ID)
-		priority, found := priorityBySlug[modelID]
-		if modelID == "" || !found || priority <= 0 {
+		catalogModel, found := catalogBySlug[modelID]
+		if modelID == "" || !found || catalogModel.Priority <= 0 {
 			continue
 		}
 		efforts := make([]string, 0)
@@ -196,9 +220,11 @@ func resolveCodexModelCapabilitiesFromCatalog(
 			continue
 		}
 		result = append(result, modelCapabilities{
-			ID:               modelID,
-			Priority:         priority,
-			ReasoningEfforts: efforts,
+			ID:                 modelID,
+			Priority:           catalogModel.Priority,
+			ReasoningEfforts:   efforts,
+			DefaultServiceTier: catalogModel.DefaultServiceTier,
+			ServiceTiers:       catalogModel.ServiceTiers,
 		})
 	}
 	sort.Slice(result, func(left, right int) bool {
@@ -208,6 +234,52 @@ func resolveCodexModelCapabilitiesFromCatalog(
 		return result[left].ID < result[right].ID
 	})
 	return result
+}
+
+func normalizeServiceTiers(raw []struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}) []serviceTierCapabilities {
+	result := make([]serviceTierCapabilities, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for _, tier := range raw {
+		id := strings.TrimSpace(tier.ID)
+		name := strings.TrimSpace(tier.Name)
+		description := strings.TrimSpace(tier.Description)
+		if id == "" || name == "" || description == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, serviceTierCapabilities{
+			ID:          id,
+			Name:        name,
+			Description: description,
+		})
+	}
+	return result
+}
+
+func normalizeOptionalServiceTier(
+	raw *string,
+	tiers []serviceTierCapabilities,
+) *string {
+	if raw == nil {
+		return nil
+	}
+	value := strings.TrimSpace(*raw)
+	if value == "" {
+		return nil
+	}
+	for _, tier := range tiers {
+		if tier.ID == value {
+			return &value
+		}
+	}
+	return nil
 }
 
 func normalizeReasoningEfforts(efforts []string) []string {

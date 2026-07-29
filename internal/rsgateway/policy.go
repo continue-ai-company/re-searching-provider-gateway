@@ -11,7 +11,7 @@ import (
 
 const (
 	// ProtocolVersion is the local process contract consumed by Re-Searching.
-	ProtocolVersion = 1
+	ProtocolVersion = 2
 	// MaxParallelRequests is the supported concurrent request acceptance target.
 	MaxParallelRequests = 8
 )

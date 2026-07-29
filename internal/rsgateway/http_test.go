@@ -53,7 +53,7 @@ func TestBearerMiddlewareProtectsCapabilitiesAndLeavesHealthPublic(t *testing.T)
 	if got := authorized.Header().Get(HeaderGatewayVersion); got != "v7.2.103-rs.test" {
 		t.Fatalf("gateway version header = %q", got)
 	}
-	if got := authorized.Header().Get(HeaderProtocolVersion); got != "1" {
+	if got := authorized.Header().Get(HeaderProtocolVersion); got != "2" {
 		t.Fatalf("protocol version header = %q", got)
 	}
 }
@@ -118,6 +118,11 @@ func TestCapabilitiesProjectsProviderModelsAndReasoningEfforts(t *testing.T) {
 		model.ReasoningEfforts[0] != "medium" || model.ReasoningEfforts[1] != "xhigh" {
 		t.Fatalf("model capabilities = %#v", model)
 	}
+	if len(model.ServiceTiers) != 1 ||
+		model.ServiceTiers[0].ID != "priority" ||
+		model.ServiceTiers[0].Name != "Fast" {
+		t.Fatalf("model service tiers = %#v", model.ServiceTiers)
+	}
 }
 
 func TestResolveCodexModelCapabilitiesFiltersAndSorts(t *testing.T) {
@@ -149,7 +154,14 @@ func TestResolveCodexModelCapabilitiesFiltersAndSorts(t *testing.T) {
 	}
 	catalog := []byte(`{
 		"models": [
-			{"slug": "model-second", "priority": 2},
+			{
+				"slug": "model-second",
+				"priority": 2,
+				"default_service_tier": "priority",
+				"service_tiers": [
+					{"id": "priority", "name": "Fast", "description": "1.5x speed"}
+				]
+			},
 			{"slug": "model-first-b", "priority": 1},
 			{"slug": "model-first-a", "priority": 1},
 			{"slug": "model-without-reasoning", "priority": 3},
@@ -175,6 +187,13 @@ func TestResolveCodexModelCapabilitiesFiltersAndSorts(t *testing.T) {
 		got[2].ReasoningEfforts[0] != "medium" ||
 		got[2].ReasoningEfforts[1] != "xhigh" {
 		t.Fatalf("normalized efforts = %#v", got[2].ReasoningEfforts)
+	}
+	if got[2].DefaultServiceTier == nil || *got[2].DefaultServiceTier != "priority" {
+		t.Fatalf("default service tier = %#v", got[2].DefaultServiceTier)
+	}
+	if len(got[2].ServiceTiers) != 1 ||
+		got[2].ServiceTiers[0].Description != "1.5x speed" {
+		t.Fatalf("service tiers = %#v", got[2].ServiceTiers)
 	}
 }
 

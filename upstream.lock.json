@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "product": "re-searching-provider-gateway",
-  "release_version": "v7.2.103-rs.1",
-  "gateway_protocol_version": 1,
+  "release_version": "v7.2.103-rs.2",
+  "gateway_protocol_version": 2,
   "enabled_providers": [
     "codex"
   ],
